@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Azorvath World - Mabar Online</title>
+    <!-- CDN PeerJS alternatif yang stabil untuk GitHub Pages -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #0d0d0d; color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden; position: fixed;
+        }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; background-color: #1a1a1a; }
+        
+        #top-bar {
+            height: 52px; background: rgba(18, 22, 28, 0.92);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 12px; z-index: 10; backdrop-filter: blur(8px);
+        }
+        .hero-mini-info { display: flex; align-items: center; gap: 8px; }
+        .hero-badge {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid #ffd700; padding: 4px 10px; border-radius: 12px;
+            font-size: 11px; font-weight: bold; color: #ffd700;
+        }
+        .bars-stack { display: flex; flex-direction: column; gap: 3px; width: 110px; }
+        .bar-container { width: 100%; background-color: #222; border-radius: 6px; height: 12px; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.08); }
+        .bar-fill { height: 100%; width: 100%; transition: width 0.2s ease; }
+        #hp-fill { background: linear-gradient(90deg, #ff416c, #ff4b2b); }
+        #exp-fill { background: linear-gradient(90deg, #2193b0, #6dd5ed); }
+        .bar-text { position: absolute; width: 100%; text-align: center; font-size: 8px; font-weight: bold; top: 0; left: 0; line-height: 12px; color: white; text-shadow: 1px 1px 2px black; }
+        
+        .res-pills { display: flex; gap: 6px; font-size: 11px; align-items: center; }
+        .res-pill { background: rgba(0,0,0,0.55); padding: 4px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); }
+        .btn-mp-top {
+            background: linear-gradient(135deg, #0984e3, #74b9ff);
+            border: 1px solid #74b9ff; color: #fff; padding: 4px 10px;
+            border-radius: 10px; font-size: 11px; font-weight: bold; cursor: pointer;
+        }
+
+        #canvas-container { position: relative; flex: 1; background-color: #172417; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #fps-overlay {
+            position: absolute; top: 10px; right: 110px; background: rgba(0, 0, 0, 0.65);
+            border: 1px solid rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 8px;
+            font-size: 10px; font-weight: bold; color: #2ecc71; z-index: 5; pointer-events: none;
+        }
+        #net-status-badge {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(0,0,0,0.7); border: 1px solid #74b9ff;
+            padding: 4px 10px; border-radius: 8px; font-size: 10px; font-weight: bold; color: #74b9ff; z-index: 5;
+        }
+        #zone-banner {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7); padding: 5px 16px; border-radius: 20px;
+            font-weight: bold; font-size: 0.8em; border: 1px solid rgba(255,255,255,0.2); pointer-events: none; z-index: 5;
+        }
+        #minimap-container {
+            position: absolute; top: 10px; right: 10px; width: 90px; height: 90px;
+            border: 2px solid rgba(255, 255, 255, 0.35); border-radius: 12px;
+            overflow: hidden; background: rgba(0,0,0,0.7); z-index: 5;
+        }
+        #minimapCanvas { width: 100%; height: 100%; }
+
+        /* KONTROL JOYSTICK & AKSI */
+        .controls-layer {
+            position: absolute; bottom: 10px; left: 0; width: 100%; padding: 0 15px;
+            display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; z-index: 10;
+        }
+        .control-group { pointer-events: auto; }
+        .joystick-container {
+            width: 120px; height: 120px; background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(0, 210, 211, 0.35); border-radius: 50%;
+            position: relative; display: flex; align-items: center; justify-content: center;
+        }
+        .joystick-knob {
+            width: 50px; height: 50px; background: radial-gradient(circle, #f1c40f 0%, #d35400 100%);
+            border: 2px solid #ffffff; border-radius: 50%; position: absolute; pointer-events: none;
+        }
+        .action-buttons { position: relative; width: 170px; height: 170px; pointer-events: auto; }
+        .btn-action {
+            border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #fff; font-weight: bold; cursor: pointer; border: 1px solid rgba(255,255,255,0.4); position: absolute;
+        }
+        .btn-attack {
+            width: 65px; height: 65px; background: radial-gradient(circle, #ff416c 0%, #ff4b2b 100%);
+            font-size: 22px; border-color: #ff7675; bottom: 0; right: 0;
+        }
+        .btn-skill { width: 44px; height: 44px; font-size: 15px; }
+        #btn-skill-1 { background: radial-gradient(circle, #8a2387 0%, #e94057 100%); border-color: #a29bfe; bottom: 0px; right: 80px; }
+        #btn-skill-2 { background: radial-gradient(circle, #f2994a 0%, #f2c94c 100%); border-color: #f39c12; bottom: 60px; right: 60px; }
+        #btn-skill-3 { background: radial-gradient(circle, #11998e 0%, #38ef7d 100%); border-color: #ffeaa7; bottom: 80px; right: 0px; }
+        .btn-label { font-size: 6px; margin-top: -2px; text-transform: uppercase; }
+
+        /* MODAL */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-content {
+            background: linear-gradient(145deg, #1e293b, #0f172a); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 18px; padding: 20px; width: 90%; max-width: 400px; text-align: center;
+        }
+        .btn {
+            background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none;
+            padding: 10px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 6px;
+        }
+        .btn-danger { background: linear-gradient(135deg, #cb2d3e, #ef473a); }
+        .btn-blue { background: linear-gradient(135deg, #0984e3, #74b9ff); }
+        .hidden { display: none !important; }
+        input.mp-input {
+            width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #74b9ff;
+            background: rgba(0,0,0,0.5); color: #fff; font-size: 14px; text-align: center; margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="top-bar">
+        <div class="hero-mini-info">
+            <span class="hero-badge" id="ui-hero-badge">Warrior Lv.1</span>
+            <div class="bars-stack">
+                <div class="bar-container">
+                    <div id="hp-fill" class="bar-fill"></div>
+                    <div class="bar-text" id="txt-hp">2000/2000</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="res-pills">
+            <button class="btn-mp-top" onclick="openMultiplayerModal()">👥 Lobi Mabar</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <div id="net-status-badge">🌐 Status: Solo</div>
+        <div id="fps-overlay">60 FPS</div>
+        <div id="zone-banner">🏡 Rimba Azorvath</div>
+
+        <div id="minimap-container">
+            <canvas id="minimapCanvas" width="90" height="90"></canvas>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="controls-layer">
+            <div class="control-group">
+                <div class="joystick-container" id="joystick-base">
+                    <div class="joystick-knob" id="joystick-knob"></div>
+                </div>
+            </div>
+
+            <div class="control-group action-buttons">
+                <div class="btn-action btn-skill" id="btn-skill-1" ontouchstart="useSkill1(event)" onmousedown="useSkill1(event)">
+                    <span>✨</span><span class="btn-label">SKILL 1</span>
+                </div>
+                <div class="btn-action btn-skill" id="btn-skill-2" ontouchstart="useSkill2(event)" onmousedown="useSkill2(event)">
+                    <span>🔥</span><span class="btn-label">SKILL 2</span>
+                </div>
+                <div class="btn-action btn-skill" id="btn-skill-3" ontouchstart="useSkill3(event)" onmousedown="useSkill3(event)">
+                    <span>⚡</span><span class="btn-label">BLINK</span>
+                </div>
+                <div class="btn-action btn-attack" id="btn-attack" ontouchstart="performManualAttack(event)" onmousedown="performManualAttack(event)">
+                    <span>⚔️</span><span class="btn-label">ATTACK</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL MULTIPLAYER -->
+<div id="multiplayer-modal" class="overlay hidden">
+    <div class="modal-content">
+        <h3 style="color:#74b9ff; margin-top:0;">👥 Lobi Mabar Online</h3>
+        <p style="font-size:11px; color:#bdc3c7;">Bermain bersama teman secara langsung (P2P WebRTC).</p>
+
+        <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; margin-bottom: 12px; text-align: left;">
+            <div style="font-size:11px; color:#aaa;">ID Room Kamu:</div>
+            <div id="my-peer-id" style="font-weight:bold; color:#ffd700; font-size:13px; word-break: break-all;">Menghubungkan...</div>
+        </div>
+
+        <input type="text" id="target-peer-id" class="mp-input" placeholder="Masukkan ID Room Teman">
+        
+        <button class="btn btn-blue" onclick="joinFriendRoom()">🔗 Gabung Room Teman</button>
+        <button class="btn" onclick="copyMyRoomId()" style="background: linear-gradient(135deg, #f39c12, #e67e22);">📋 Salin ID Room Saya</button>
+        <button class="btn btn-danger" onclick="closeModal('multiplayer-modal')" style="margin-top:10px;">Tutup</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const minimapCanvas = document.getElementById('minimapCanvas');
+    const minimapCtx = minimapCanvas.getContext('2d');
+
+    const MAP_WIDTH = 2000;
+    const MAP_HEIGHT = 2000;
+
+    let camera = { x: 0, y: 0 };
+    let player = {
+        name: 'Player',
+        x: 250, y: 250, speed: 4.0, radius: 16,
+        class: 'Warrior', hp: 2000, maxHp: 2000
+    };
+
+    let remotePlayers = {};
+    let floatingTexts = [];
+    let gameFrame = 0;
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 52;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // ==========================================
+    // POHON, MONSTER, & ALAM
+    // ==========================================
+    let trees = [];
+    for (let i = 0; i < 40; i++) {
+        trees.push({
+            x: 100 + (i * 47) % (MAP_WIDTH - 200),
+            y: 100 + (i * 83) % (MAP_HEIGHT - 200),
+            radius: 22,
+            type: i % 2 === 0 ? 'oak' : 'pine'
+        });
+    }
+
+    let monsters = [
+        { x: 500, y: 700, type: 'boar', label: '🐗 Babi Buas', hp: 1000, maxHp: 1000, radius: 20 },
+        { x: 900, y: 1100, type: 'boar', label: '🐗 Babi Buas', hp: 1000, maxHp: 1000, radius: 20 },
+        { x: 1200, y: 600, type: 'orc', label: '👹 Orc Prajurit', hp: 1500, maxHp: 1500, radius: 26 },
+        { x: 1500, y: 1400, type: 'orc', label: '👹 Orc Prajurit', hp: 1500, maxHp: 1500, radius: 26 }
+    ];
+
+    // ==========================================
+    // SISTEM PEERJS (WEBRTC MABAR)
+    // ==========================================
+    let peer = null;
+    let activeConnections = [];
+
+    function initNetworking() {
+        try {
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                document.getElementById('my-peer-id').innerText = id;
+                document.getElementById('net-status-badge').innerText = `🌐 Online (Siap Mabar)`;
+            });
+
+            peer.on('connection', (conn) => {
+                setupConnectionHandlers(conn);
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                document.getElementById('my-peer-id').innerText = 'Gagal konek signaling';
+            });
+        } catch(e) {
+            console.error(e);
+        }
+    }
+
+    function setupConnectionHandlers(conn) {
+        conn.on('open', () => {
+            activeConnections.push(conn);
+            document.getElementById('net-status-badge').innerText = `👥 Terhubung (${activeConnections.length} Teman)`;
+            addFloatingText(player.x, player.y - 40, "Teman Masuk Lobi! 🎉", "#2ecc71");
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'sync') {
+                remotePlayers[data.id] = {
+                    x: data.x, y: data.y, hp: data.hp, maxHp: data.maxHp
+                };
+            } else if (data.type === 'attack_fx') {
+                addFloatingText(data.x, data.y - 20, "⚔️ Tebasan Teman!", "#e74c3c");
+            }
+        });
+
+        conn.on('close', () => {
+            activeConnections = activeConnections.filter(c => c !== conn);
+            document.getElementById('net-status-badge').innerText = activeConnections.length > 0 ? `👥 Terhubung (${activeConnections.length})` : `🌐 Solo`;
+        });
+    }
+
+    function joinFriendRoom() {
+        const friendId = document.getElementById('target-peer-id').value.trim();
+        if (!friendId || (peer && friendId === peer.id)) return alert("Masukkan ID teman yang valid!");
+
+        const conn = peer.connect(friendId);
+        setupConnectionHandlers(conn);
+        closeModal('multiplayer-modal');
+    }
+
+    function broadcastNetData(payload) {
+        activeConnections.forEach(conn => {
+            if (conn.open) conn.send(payload);
+        });
+    }
+
+    function copyMyRoomId() {
+        const id = document.getElementById('my-peer-id').innerText;
+        navigator.clipboard.writeText(id).then(() => {
+            alert("ID Room tersalin! Bagikan ke teman.");
+        });
+    }
+
+    function openMultiplayerModal() { document.getElementById('multiplayer-modal').classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    // ==========================================
+    // KONTROL JOYSTICK
+    // ==========================================
+    let joystickVector = { x: 0, y: 0 };
+    let isJoystickActive = false;
+
+    function setupJoystick() {
+        const base = document.getElementById('joystick-base');
+        const knob = document.getElementById('joystick-knob');
+        const maxRadius = 35;
+
+        const handleMove = (clientX, clientY) => {
+            const rect = base.getBoundingClientRect();
+            let dx = clientX - (rect.left + rect.width / 2);
+            let dy = clientY - (rect.top + rect.height / 2);
+            let dist = Math.hypot(dx, dy);
+
+            if (dist > maxRadius) {
+                dx = (dx / dist) * maxRadius;
+                dy = (dy / dist) * maxRadius;
+            }
+            knob.style.transform = `translate(${dx}px, ${dy}px)`;
+            joystickVector.x = dx / maxRadius;
+            joystickVector.y = dy / maxRadius;
+        };
+
+        base.addEventListener('touchstart', (e) => {
+            isJoystickActive = true;
+            handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        window.addEventListener('touchmove', (e) => {
+            if (isJoystickActive) handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        });
+        window.addEventListener('touchend', () => {
+            isJoystickActive = false;
+            knob.style.transform = `translate(0px, 0px)`;
+            joystickVector = { x: 0, y: 0 };
+        });
+    }
+
+    function performManualAttack(e) {
+        if(e) e.preventDefault();
+        addFloatingText(player.x, player.y - 25, "⚔️ Tebasan!", "#ffd700");
+        broadcastNetData({ type: 'attack_fx', x: player.x, y: player.y });
+    }
+    function useSkill1(e) { if(e) e.preventDefault(); addFloatingText(player.x, player.y - 25, "✨ Slashes!", "#9b59b6"); }
+    function useSkill2(e) { if(e) e.preventDefault(); addFloatingText(player.x, player.y - 25, "🔥 Fire Slash!", "#e67e22"); }
+    function useSkill3(e) {
+        if(e) e.preventDefault();
+        player.x += (joystickVector.x || 1) * 120;
+        player.y += (joystickVector.y || 0) * 120;
+        addFloatingText(player.x, player.y - 25, "⚡ Blink!", "#f1c40f");
+    }
+
+    function addFloatingText(x, y, text, color) {
+        floatingTexts.push({ x, y, text, color, timer: 35 });
+    }
+
+    // Sinkronisasi data posisi ke teman
+    setInterval(() => {
+        if (peer && peer.id) {
+            broadcastNetData({
+                type: 'sync',
+                id: peer.id,
+                x: Math.round(player.x),
+                y: Math.round(player.y),
+                hp: player.hp,
+                maxHp: player.maxHp
+            });
+        }
+    }, 50);
+
+    // ==========================================
+    // GAME LOOP UTAMA
+    // ==========================================
+    function gameLoop() {
+        requestAnimationFrame(gameLoop);
+        gameFrame++;
+
+        if (isJoystickActive) {
+            player.x += joystickVector.x * player.speed;
+            player.y += joystickVector.y * player.speed;
+            player.x = Math.max(player.radius, Math.min(MAP_WIDTH - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(MAP_HEIGHT - player.radius, player.y));
+        }
+
+        camera.x = Math.max(0, Math.min(MAP_WIDTH - canvas.width, Math.floor(player.x - canvas.width / 2)));
+        camera.y = Math.max(0, Math.min(MAP_HEIGHT - canvas.height, Math.floor(player.y - canvas.height / 2)));
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(-camera.x, -camera.y);
+
+        // Grid Alam
+        for (let r = 0; r < MAP_HEIGHT; r += 100) {
+            for (let c = 0; c < MAP_WIDTH; c += 100) {
+                ctx.fillStyle = (r + c) % 200 === 0 ? "#1e3922" : "#172b1a";
+                ctx.fillRect(c, r, 100, 100);
+            }
+        }
+
+        // Zona Aman Desa
+        ctx.fillStyle = "rgba(46, 125, 50, 0.4)";
+        ctx.fillRect(40, 40, 320, 320);
+
+        // Gambar Pohon
+        trees.forEach(t => {
+            ctx.fillStyle = '#3e2723';
+            ctx.fillRect(t.x - 4, t.y - 10, 8, 20);
+            ctx.fillStyle = t.type === 'pine' ? '#134e1e' : '#2e7d32';
+            ctx.beginPath();
+            ctx.arc(t.x, t.y - 18, t.radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Gambar Monster
+        monsters.forEach(m => {
+            ctx.fillStyle = m.type === 'orc' ? '#e67e22' : '#8d6e63';
+            ctx.beginPath();
+            ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(m.label, m.x, m.y - m.radius - 8);
+        });
+
+        // Gambar Teman (Multiplayer Remote Players)
+        for (let id in remotePlayers) {
+            let rp = remotePlayers[id];
+            ctx.fillStyle = "#3498db";
+            ctx.beginPath(); ctx.arc(rp.x, rp.y, 16, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#fff"; ctx.stroke();
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("Teman Mabar", rp.x, rp.y - 24);
+
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.fillRect(rp.x - 20, rp.y - 20, 40, 4);
+            ctx.fillStyle = "#2ecc71";
+            ctx.fillRect(rp.x - 20, rp.y - 20, (rp.hp / rp.maxHp) * 40, 4);
+        }
+
+        // Gambar Player Sendiri
+        ctx.fillStyle = "#e74c3c";
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#ffd700"; ctx.lineWidth = 2; ctx.stroke();
+
+        ctx.font = "bold 10px sans-serif";
+        ctx.fillStyle = "#ffd700";
+        ctx.textAlign = "center";
+        ctx.fillText("Kamu", player.x, player.y - 22);
+
+        // Teks Terapung (Floating Texts)
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            let ft = floatingTexts[i];
+            ctx.fillStyle = ft.color;
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ft.y -= 0.6;
+            if (--ft.timer <= 0) floatingTexts.splice(i, 1);
+        }
+
+        ctx.restore();
+
+        // Minimap
+        minimapCtx.clearRect(0, 0, 90, 90);
+        let s = 90 / MAP_WIDTH;
+        minimapCtx.fillStyle = "#2ecc71";
+        trees.forEach(t => minimapCtx.fillRect(t.x * s, t.y * s, 1.5, 1.5));
+        minimapCtx.fillStyle = "#ffd700";
+        minimapCtx.fillRect(player.x * s, player.y * s, 3.5, 3.5);
+        minimapCtx.fillStyle = "#3498db";
+        for (let id in remotePlayers) {
+            minimapCtx.fillRect(remotePlayers[id].x * s, remotePlayers[id].y * s, 3.5, 3.5);
+        }
+    }
+
+    setupJoystick();
+    initNetworking();
+    requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
